@@ -2,40 +2,45 @@ import streamlit as st
 import cv2
 import mediapipe as mp
 import numpy as np
-import os
-import logging
-
-# 警告の抑制
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # TensorFlowのログを抑制
-logging.getLogger('tensorflow').setLevel(logging.ERROR)  # TensorFlowのログを抑制
-import absl.logging
-absl.logging.set_verbosity(absl.logging.ERROR)  # abslのログをエラーのみ表示
 
 # Mediapipeセットアップ
 mp_face_mesh = mp.solutions.face_mesh
-face_mesh = mp_face_mesh.FaceMesh(
-    static_image_mode=False,
-    max_num_faces=1,
-    refine_landmarks=True,
-    min_detection_confidence=0.5,
-    min_tracking_confidence=0.5
-)
+face_mesh = mp_face_mesh.FaceMesh(static_image_mode=False, max_num_faces=1, refine_landmarks=True)
 
 st.title("顔タイプ分類アプリ")
 st.write("リアルタイムで顔タイプを分類します。")
 
+# 利用可能なカメラデバイスをリストアップ
+def list_cameras():
+    index = 0
+    devices = []
+    while True:
+        cap = cv2.VideoCapture(index)
+        if not cap.isOpened():
+            break
+        devices.append(f"Camera {index}")
+        cap.release()
+        index += 1
+    return devices
+
+available_cameras = list_cameras()
+
+# カメラ選択
+camera_id = st.selectbox("使用するカメラを選択してください", range(len(available_cameras)), format_func=lambda x: available_cameras[x])
+
+# 診断関数
 def classify_face(image):
     rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     results = face_mesh.process(rgb_image)
 
     if not results.multi_face_landmarks:
-        return image, "顔が検出されませんでした。"
+        return image, None
 
     face_landmarks = results.multi_face_landmarks[0]
     h, w, _ = image.shape
     landmarks = [(int(p.x * w), int(p.y * h)) for p in face_landmarks.landmark]
 
-    # ランドマークを利用した分類ロジック
+    # 簡易分類ロジック
     def euclidean_distance(p1, p2):
         return np.sqrt((p1[0] - p2[0]) ** 2 + (p1[1] - p2[1]) ** 2)
 
@@ -43,7 +48,6 @@ def classify_face(image):
     face_height = euclidean_distance(landmarks[10], landmarks[152])  # 顔の縦長
     aspect_ratio = face_height / face_width
 
-    # ランドマーク間距離を使用した簡易分類
     curve_score = 0
     for pair in [(33, 160), (133, 243), (61, 146), (291, 375)]:
         curve_score += euclidean_distance(landmarks[pair[0]], landmarks[pair[1]])
@@ -65,13 +69,15 @@ def classify_face(image):
     else:
         return image, "クールタイプ"
 
+# カメラ起動ボタン
 if st.button("カメラを起動"):
-    cap = cv2.VideoCapture(0)
+    cap = cv2.VideoCapture(camera_id)
+
     if not cap.isOpened():
         st.error("カメラが検出されませんでした。カメラのアクセス許可を確認してください。")
     else:
         FRAME_WINDOW = st.image([])
-        st.write("カメラ映像を停止するにはページをリロードしてください。")
+        diagnosis_placeholder = st.empty()  # 診断結果を表示するプレースホルダー
 
         while True:
             ret, frame = cap.read()
@@ -81,6 +87,10 @@ if st.button("カメラを起動"):
 
             frame, diagnosis = classify_face(frame)
             FRAME_WINDOW.image(frame, channels="BGR")
-            st.write("診断結果:", diagnosis)
+
+            if diagnosis:
+                diagnosis_placeholder.write(f"診断結果: {diagnosis}")
+            else:
+                diagnosis_placeholder.write("診断中...")  # 結果が出るまで一時的に表示
 
         cap.release()
