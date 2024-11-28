@@ -39,6 +39,9 @@ def calculate_face_features_and_draw(image_path):
         print(f"Could not read image at {image_path}")
         return None, None
     
+    # 画像の幅と高さを取得
+    height, width, _ = image.shape
+
     # BGR -> RGB へ変換
     image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     
@@ -53,106 +56,104 @@ def calculate_face_features_and_draw(image_path):
                 feature = {}
                 feature['image_path'] = image_path
 
-                landmarks = [(lm.x, lm.y) for lm in face_landmarks.landmark]
+                landmarks = [(lm.x * width, lm.y * height) for lm in face_landmarks.landmark]  # 座標をピクセル単位に変換
                 
-                # 下唇の中心から顎までの直線距離
+                # 顔の幅と高さの比率
                 chin = landmarks[152]
-                bottom_lip = landmarks[17]
-                chin_distance = np.linalg.norm(np.array(chin) - np.array(bottom_lip))
-                feature['chin_to_lip_distance'] = chin_distance
+                forehead = landmarks[10]
+                face_height = np.linalg.norm(np.array(forehead) - np.array(chin))
+                face_width = np.linalg.norm(np.array(landmarks[454]) - np.array(landmarks[234]))
+                face_ratio = face_width / face_height
+                feature['face_height'] = face_height
+                feature['face_width'] = face_width
+                feature['face_ratio'] = face_ratio
                 
-                # 目の間の距離
-                left_eye_inner = landmarks[362]
-                right_eye_inner = landmarks[133]
-                eye_distance = np.linalg.norm(np.array(left_eye_inner) - np.array(right_eye_inner))
-                feature['eye_distance'] = eye_distance
+                # 顎の形状（顎の幅）
+                jaw_width = np.linalg.norm(np.array(landmarks[454]) - np.array(landmarks[234]))  # 顎の幅
+                feature['jaw_width'] = jaw_width
                 
-                # 目の横幅と縦幅（左目）
+                # 目の縦横比（左目）
                 left_eye_width = np.linalg.norm(np.array(landmarks[362]) - np.array(landmarks[263]))  # 362から263
                 left_eye_height = np.linalg.norm(np.array(landmarks[386]) - np.array(landmarks[374]))  # 386から374
-                feature['left_eye_width'] = left_eye_width
-                feature['left_eye_height'] = left_eye_height
+                left_eye_ratio = left_eye_width / left_eye_height
+                feature['left_eye_ratio'] = left_eye_ratio
 
-                # 目の横幅と縦幅（右目）
+                # 目の縦横比（右目）
                 right_eye_width = np.linalg.norm(np.array(landmarks[133]) - np.array(landmarks[33]))  # 133から33
                 right_eye_height = np.linalg.norm(np.array(landmarks[159]) - np.array(landmarks[145]))  # 159から145
-                feature['right_eye_width'] = right_eye_width
-                feature['right_eye_height'] = right_eye_height
+                right_eye_ratio = right_eye_width / right_eye_height
+                feature['right_eye_ratio'] = right_eye_ratio
 
-                # 口角から口角までの距離
-                left_corner = landmarks[61]
-                right_corner = landmarks[291]
-                mouth_width = np.linalg.norm(np.array(left_corner) - np.array(right_corner))
-                feature['mouth_width'] = mouth_width
-                
-                # 唇の厚み（上唇と下唇の前後方向の距離）
-                upper_lip = landmarks[0]
-                lower_lip = landmarks[17]
-                lip_thickness = np.linalg.norm(np.array(upper_lip) - np.array(lower_lip))
-                feature['lip_thickness'] = lip_thickness
+                # 鼻の高さと幅
+                nose_height = np.linalg.norm(np.array(landmarks[1]) - np.array(landmarks[6]))  # 鼻の高さ
+                nose_width = np.linalg.norm(np.array(landmarks[64]) - np.array(landmarks[294]))  # 鼻の幅
+                feature['nose_height'] = nose_height
+                feature['nose_width'] = nose_width
 
-                # 小鼻の横幅
-                nostril_left = landmarks[64]
-                nostril_right = landmarks[294]
-                nostril_width = np.linalg.norm(np.array(nostril_left) - np.array(nostril_right))
-                feature['nostril_width'] = nostril_width
+                # 顔面比率（額、鼻、口、顎の比率）
+                forehead_to_nose = np.linalg.norm(np.array(landmarks[10]) - np.array(landmarks[1]))  # 額から鼻まで
+                nose_to_chin = np.linalg.norm(np.array(landmarks[1]) - np.array(landmarks[152]))  # 鼻から顎まで
+                mouth_to_chin = np.linalg.norm(np.array(landmarks[17]) - np.array(landmarks[152]))  # 口から顎まで
+                feature['forehead_to_nose_ratio'] = forehead_to_nose / nose_to_chin
+                feature['nose_to_chin_ratio'] = nose_to_chin / mouth_to_chin
+
+                # 顔の対称性（左右対称性）
+                left_face = landmarks[:len(landmarks)//2]
+                right_face = landmarks[len(landmarks)//2:]
+                symmetry_score = np.mean([np.linalg.norm(np.array(left_face[i]) - np.array(right_face[i])) for i in range(len(left_face))])
+                feature['symmetry_score'] = symmetry_score
+
+                # 目と目の距離
+                left_eye_to_right_eye = np.linalg.norm(np.array(landmarks[362]) - np.array(landmarks[133]))
+                feature['left_eye_to_right_eye'] = left_eye_to_right_eye
 
                 # 特徴をリストに追加
                 features.append(feature)
-
-                # 顔の特徴を点で描画し、数値を表示
-                for i, landmark in enumerate(landmarks):
-                    x, y = int(landmark[0] * image.shape[1]), int(landmark[1] * image.shape[0])
-                    cv2.circle(image, (x, y), 1, (0, 255, 0), 1)
                 
-                # 特徴点を線でつなぐ
-                # 目の間の距離（色を変える）
-                eye_color = (255, 0, 0)
-                cv2.line(image, (int(left_eye_inner[0] * image.shape[1]), int(left_eye_inner[1] * image.shape[0])),
-                         (int(right_eye_inner[0] * image.shape[1]), int(right_eye_inner[1] * image.shape[0])), eye_color, 2)
+                # 顔の特徴点を線で結ぶ
+                # 顔の幅を描画
+                cv2.line(image, tuple(map(int, landmarks[234])), tuple(map(int, landmarks[454])), generate_random_color(), 2)
 
-                # 目の横幅（左目）
-                left_eye_color = (0, 255, 0)
-                cv2.line(image, (int(landmarks[362][0] * image.shape[1]), int(landmarks[362][1] * image.shape[0])),
-                         (int(landmarks[263][0] * image.shape[1]), int(landmarks[263][1] * image.shape[0])), left_eye_color, 2)
+                # 顔の高さを描画
+                cv2.line(image, tuple(map(int, landmarks[10])), tuple(map(int, landmarks[152])), generate_random_color(), 2)
 
-                # 目の縦幅（左目）
-                cv2.line(image, (int(landmarks[386][0] * image.shape[1]), int(landmarks[386][1] * image.shape[0])),
-                         (int(landmarks[374][0] * image.shape[1]), int(landmarks[374][1] * image.shape[0])), left_eye_color, 2)
+                # 顎の幅を描画
+                cv2.line(image, tuple(map(int, landmarks[454])), tuple(map(int, landmarks[234])), generate_random_color(), 2)
 
-                # 目の横幅（右目）
-                right_eye_color = (0, 0, 255)
-                cv2.line(image, (int(landmarks[133][0] * image.shape[1]), int(landmarks[133][1] * image.shape[0])),
-                         (int(landmarks[33][0] * image.shape[1]), int(landmarks[33][1] * image.shape[0])), right_eye_color, 2)
+                # 左目の縦幅を描画
+                cv2.line(image, tuple(map(int, landmarks[362])), tuple(map(int, landmarks[263])), generate_random_color(), 2)
 
-                # 目の縦幅（右目）
-                cv2.line(image, (int(landmarks[159][0] * image.shape[1]), int(landmarks[159][1] * image.shape[0])),
-                         (int(landmarks[145][0] * image.shape[1]), int(landmarks[145][1] * image.shape[0])), right_eye_color, 2)
+                # 左目の横幅を描画
+                cv2.line(image, tuple(map(int, landmarks[386])), tuple(map(int, landmarks[374])), generate_random_color(), 2)
 
-                # 口角から口角までの距離
-                mouth_color = (255, 0, 255)
-                cv2.line(image, (int(left_corner[0] * image.shape[1]), int(left_corner[1] * image.shape[0])),
-                         (int(right_corner[0] * image.shape[1]), int(right_corner[1] * image.shape[0])), mouth_color, 2)
+                # 右目の縦幅を描画
+                cv2.line(image, tuple(map(int, landmarks[133])), tuple(map(int, landmarks[33])), generate_random_color(), 2)
 
-                # 唇の厚み
-                lip_color = (0, 255, 255)
-                cv2.line(image, 
-                        (int(upper_lip[0] * image.shape[1]), int(upper_lip[1] * image.shape[0])),
-                        (int(lower_lip[0] * image.shape[1]), int(lower_lip[1] * image.shape[0])), lip_color, 2)
+                # 右目の横幅を描画
+                cv2.line(image, tuple(map(int, landmarks[159])), tuple(map(int, landmarks[145])), generate_random_color(), 2)
 
-                # 小鼻の横幅
-                nostril_color = (255, 255, 0)
-                cv2.line(image, (int(nostril_left[0] * image.shape[1]), int(nostril_left[1] * image.shape[0])),
-                         (int(nostril_right[0] * image.shape[1]), int(nostril_right[1] * image.shape[0])), nostril_color, 2)
+                # 鼻の高さを描画
+                cv2.line(image, tuple(map(int, landmarks[1])), tuple(map(int, landmarks[6])), generate_random_color(), 2)
 
-                # 顎から下唇までの直線
-                chin_color = (0, 0, 0)
-                cv2.line(image, (int(chin[0] * image.shape[1]), int(chin[1] * image.shape[0])),
-                         (int(bottom_lip[0] * image.shape[1]), int(bottom_lip[1] * image.shape[0])), chin_color, 2)
-            
+                # 鼻の幅を描画
+                cv2.line(image, tuple(map(int, landmarks[64])), tuple(map(int, landmarks[294])), generate_random_color(), 2)
+
+                # 額から鼻までの距離を描画
+                cv2.line(image, tuple(map(int, landmarks[10])), tuple(map(int, landmarks[1])), generate_random_color(), 2)
+
+                # 鼻から顎までの距離を描画
+                cv2.line(image, tuple(map(int, landmarks[1])), tuple(map(int, landmarks[152])), generate_random_color(), 2)
+
+                # 口から顎までの距離を描画
+                cv2.line(image, tuple(map(int, landmarks[17])), tuple(map(int, landmarks[152])), generate_random_color(), 2)
+
+                # 目と目の距離を描画
+                cv2.line(image, tuple(map(int, landmarks[362])), tuple(map(int, landmarks[133])), generate_random_color(), 2)
+
             return image, features
         else:
             return None, None
+
 
 def process_directory(input_directory, output_directory):
     os.makedirs(output_directory, exist_ok=True)
