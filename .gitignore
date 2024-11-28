@@ -1,3 +1,6 @@
 myenv/
 *.csv
+*.dat
 memo.md
+*jpg
+others/
